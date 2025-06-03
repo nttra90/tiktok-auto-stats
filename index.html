@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <title>Auto TikTok Stats (DOM Extraction)</title>
+</head>
+<body>
+  <h2>🔍 Kiểm tra tương tác video TikTok</h2>
+  <input
+    type="text"
+    id="url"
+    placeholder="Nhập link TikTok (vd: https://www.tiktok.com/@user/video/12345...)"
+    size="70"
+  />
+  <button onclick="autoCheck()">Check</button>
+
+  <div id="result" style="margin-top: 20px;"></div>
+
+  <script>
+    async function autoCheck() {
+      const url = document.getElementById('url').value.trim();
+      const resultDiv = document.getElementById('result');
+      if (!url) {
+        resultDiv.innerHTML = '<p style="color:red;">Vui lòng nhập link TikTok</p>';
+        return;
+      }
+      resultDiv.innerHTML =
+        '<p>⏳ Đang xử lý... Xin chờ vài giây để Puppeteer load trang.</p>';
+
+      try {
+        const resp = await fetch(`/api/auto?url=${encodeURIComponent(url)}`);
+        const data = await resp.json();
+
+        if (data.error) {
+          resultDiv.innerHTML =
+            `<p style="color:red;">❌ Lỗi: ${data.error}</p>` +
+            (data.details ? `<pre>${data.details}</pre>` : '');
+          console.log('Chi tiết lỗi:', data.details);
+          return;
+        }
+
+        // Hiển thị kết quả
+        resultDiv.innerHTML = `
+          <p>❤️ Likes: ${data.likes.toLocaleString()}</p>
+          <p>💬 Comments: ${data.comments.toLocaleString()}</p>
+          <p>⭐ Favorites: ${data.favorites.toLocaleString()}</p>
+          <p>🔄 Shares: ${data.shares.toLocaleString()}</p>
+        `;
+
+        // Nếu muốn xem raw text (debug), bỏ comment dòng sau
+        // resultDiv.innerHTML += `<pre>${JSON.stringify(data.raw, null, 2)}</pre>`;
+      } catch (err) {
+        console.error(err);
+        resultDiv.innerHTML =
+          `<p style="color:red;">❌ Lỗi kết nối hoặc xử lý trên server</p>`;
+      }
+    }
+  </script>
+</body>
+</html>
