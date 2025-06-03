@@ -1,47 +1,28 @@
 // server.js
 
 /**
- * Node.js + Express + Puppeteer-Core
- * ================================
+ * Node.js + Express + Puppeteer (embedded Chromium)
  * 
  * Workflow:
  *  1. Nhận GET /api/auto?url={VIDEO_URL}
- *  2. Puppeteer-Core mở trang TikTok, chờ 4 selector (like-count, comment-count, undefined-count, share-count)
- *  3. Lấy innerText → parse thành integer
- *  4. Trả về JSON {likes, comments, favorites, shares}
+ *  2. Puppeteer mở trang TikTok, chờ 4 selector:
+ *       • strong[data-e2e="like-count"]
+ *       • strong[data-e2e="comment-count"]
+ *       • strong[data-e2e="undefined-count"]
+ *       • strong[data-e2e="share-count"]
+ *  3. Lấy innerText, parse thành integer
+ *  4. Trả về JSON {likes, comments, favorites, shares, raw}
  */
 
 const express = require('express');
 const cors = require('cors');
-const puppeteer = require('puppeteer-core');
+const puppeteer = require('puppeteer'); // <<< Dùng puppeteer full, để nó tự tải Chromium
 const path = require('path');
-const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-/**
- * HÀM TIỆN ÍCH: Tự động dò đường dẫn Chromium
- */
-function getChromeExecutable() {
-  // Thêm biến môi trường override (nếu có)
-  if (process.env.CHROME_PATH && fs.existsSync(process.env.CHROME_PATH)) {
-    return process.env.CHROME_PATH;
-  }
-  // Thử /usr/bin/chromium-browser
-  if (fs.existsSync('/usr/bin/chromium-browser')) {
-    return '/usr/bin/chromium-browser';
-  }
-  // Thử /usr/bin/chromium
-  if (fs.existsSync('/usr/bin/chromium')) {
-    return '/usr/bin/chromium';
-  }
-  // Nếu không tìm thấy, log ra và throw
-  console.error('❌ Không tìm thấy Chrome/Chromium tại /usr/bin/chromium-browser hoặc /usr/bin/chromium');
-  throw new Error('Chrome/Chromium không tồn tại trên server');
-}
-
-// Hàm parse chuỗi (có “K”/“M” hoặc dấu phẩy) thành integer
+// Chuyển chuỗi "4.3K", "1.2M", "439" thành integer
 function parseTikTokNumber(str) {
   if (!str) return null;
   str = str.trim().replace(/\./g, '').replace(/,/g, '').toUpperCase();
@@ -68,42 +49,38 @@ app.get('/api/auto', async (req, res) => {
 
   let browser = null;
   try {
-    // 1. Tự động lấy đường dẫn Chrome/Chromium
-    const chromePath = getChromeExecutable();
-
-    // 2. Khởi Puppeteer-Core với executablePath đã tìm được
+    // 1) Khởi Puppeteer (embedded Chromium đã tải sẵn)
     browser = await puppeteer.launch({
       headless: true,
-      executablePath: chromePath,
       args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
     const page = await browser.newPage();
 
-    // 3. Giả lập viewport đủ rộng
+    // 2) Giả lập viewport đủ rộng để hiện hết các phần tử cần lấy
     await page.setViewport({ width: 1200, height: 2000 });
 
-    // 4. Giả lập User-Agent (tránh bị block)
+    // 3) Giả lập User-Agent (tránh TikTok chặn)
     await page.setUserAgent(
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ' +
       'AppleWebKit/537.36 (KHTML, like Gecko) ' +
       'Chrome/114.0.0.0 Safari/537.36'
     );
 
-    // 5. Mở trang TikTok
+    // 4) Mở trang TikTok
     await page.goto(videoUrl, {
       waitUntil: 'networkidle2',
       timeout: 60000
     });
 
-    // 6. Chờ 4 selector xuất hiện (15s mỗi selector)
+    // 5) Chờ các selector xuất hiện (15s timeout mỗi cái)
     await Promise.all([
       page.waitForSelector('strong[data-e2e="like-count"]', { timeout: 15000 }),
       page.waitForSelector('strong[data-e2e="comment-count"]', { timeout: 15000 }),
       page.waitForSelector('strong[data-e2e="undefined-count"]', { timeout: 15000 }),
-      page.waitForSelector('strong[data-e2e="share-count"]', { timeout: 15000 }),
+      page.waitForSelector('strong[data-e2e="share-count"]', { timeout: 15000 })
     ]);
 
-    // 7. Lấy innerText từng selector
+    // 6) Lấy innerText của từng selector
     const likesText = await page.$eval(
       'strong[data-e2e="like-count"]',
       el => el.innerText || el.textContent
@@ -121,7 +98,7 @@ app.get('/api/auto', async (req, res) => {
       el => el.innerText || el.textContent
     );
 
-    // 8. Parse thành số nguyên
+    // 7) Parse thành integer
     const likes = parseTikTokNumber(likesText);
     const comments = parseTikTokNumber(commentsText);
     const favorites = parseTikTokNumber(favoritesText);
@@ -134,11 +111,11 @@ app.get('/api/auto', async (req, res) => {
       shares === null
     ) {
       throw new Error(
-        `Không thể parse: like="${likesText}", comment="${commentsText}", favorite="${favoritesText}", share="${sharesText}"`
+        `Không thể parse data: likes="${likesText}", comments="${commentsText}", favorites="${favoritesText}", shares="${sharesText}"`
       );
     }
 
-    // 9. Trả JSON
+    // 8) Trả về JSON
     return res.json({
       likes,
       comments,
@@ -159,7 +136,7 @@ app.get('/api/auto', async (req, res) => {
   }
 });
 
-// Phục vụ index.html tại root
+// Phục vụ file index.html tại route gốc
 app.use(express.static(path.join(__dirname)));
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
