@@ -3,11 +3,15 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+-   "start": "node server.js"
++   "start": "node server.js",
++   // Khi render chạy `npm install`, nó sẽ tự chạy `npm run postinstall` để Puppeteer download Chromium
++   "postinstall": "puppeteer install"
   },
   "dependencies": {
+    "express": "^4.18.2",
     "cors": "^2.8.5",
-    "express": "^4.21.2",
-    "puppeteer": "^24.10.0"
+-   "puppeteer": "^24.8.0"
++   "puppeteer": "^24.8.0"
   }
 }
